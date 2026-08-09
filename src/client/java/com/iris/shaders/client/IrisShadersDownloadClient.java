@@ -58,7 +58,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         // Add a button to the Iris Shaders Menu
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen.getClass().getSimpleName().equals("ShaderPackScreen")) {
-                Screens.getButtons(screen).add(Button.builder(Component.literal("🔍 Search Modrinth"), button -> {
+                Screens.getButtons(screen).add(Button.builder(Component.literal("Search Modrinth"), button -> {
                     client.setScreen(new ChatScreen("/downloadshader "));
                 }).bounds(10, 10, 120, 20).build());
             }

@@ -65,6 +65,19 @@ jar {
 	from("LICENSE") {
 		rename { "${it}_$projectName"}
 	}
+	
+	manifest {
+		attributes(
+			"Specification-Title": "IRIS-SHADERS-DOWNLOAD",
+			"Specification-Vendor": "ZertCihuyy",
+			"Specification-Version": project.version,
+			"Implementation-Title": "IRIS-SHADERS-DOWNLOAD",
+			"Implementation-Version": project.version,
+			"Implementation-Vendor": "ZertCihuyy",
+			"Built-By": "Fabric Loom",
+			"Created-By": "Java 21"
+		)
+	}
 }
 
 // configure the maven publication
