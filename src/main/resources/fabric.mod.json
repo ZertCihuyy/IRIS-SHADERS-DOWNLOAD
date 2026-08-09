@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "iris_shaders_download",
+	"version": "${version}",
+	"name": "IRIS SHEDERS DOWNLOAD",
+	"description": "Auto-downloads and applies a shader pack for Iris.",
+	"authors": [
+		"Auto-Gen"
+	],
+	"contact": {},
+	"license": "GPL-3.0-or-later",
+	"icon": "assets/iris_shaders_download/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"client": [
+			"com.iris.shaders.client.IrisShadersDownloadClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21",
+		"java": ">=21"
+	}
+}
