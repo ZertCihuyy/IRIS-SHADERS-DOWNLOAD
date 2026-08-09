@@ -1,15 +1,26 @@
 package com.iris.shaders.client;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.net.URL;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -23,6 +34,23 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
     public void onInitializeClient() {
         LOGGER.info("Starting IRIS SHEDERS DOWNLOAD mod...");
         
+        // Register the search and download command
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            dispatcher.register(ClientCommandManager.literal("downloadshader")
+                .then(ClientCommandManager.argument("name", StringArgumentType.greedyString())
+                    .executes(context -> {
+                        String shaderName = StringArgumentType.getString(context, "name");
+                        context.getSource().sendFeedback(Text.literal("§e[IrisDownloader] Searching Modrinth for: " + shaderName));
+                        
+                        new Thread(() -> {
+                            searchAndDownloadShader(shaderName, context.getSource());
+                        }).start();
+                        
+                        return 1;
+                    })));
+        });
+        
+        // Default behavior (download Complementary if no shaders exist)
         Path gameDir = FabricLoader.getInstance().getGameDir();
         File shaderpacksDir = new File(gameDir.toFile(), "shaderpacks");
         if (!shaderpacksDir.exists()) {
@@ -30,50 +58,110 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         }
         
         File targetShader = new File(shaderpacksDir, "ComplementaryReimagined.zip");
-        if (!targetShader.exists()) {
-            downloadShader(targetShader);
-        } else {
-            LOGGER.info("Shader pack already exists. Skipping download.");
+        if (!targetShader.exists() && shaderpacksDir.listFiles() != null && shaderpacksDir.listFiles().length == 0) {
+            new Thread(() -> {
+                try {
+                    downloadProjectBySlug("complementary-reimagined", null);
+                } catch (Exception e) {
+                    LOGGER.error("Failed to download default shader", e);
+                }
+            }).start();
         }
-        
-        enableIris(gameDir.toFile());
     }
     
-    private void downloadShader(File targetFile) {
-        LOGGER.info("Downloading Complementary Reimagined shader...");
+    private void searchAndDownloadShader(String query, FabricClientCommandSource source) {
         try {
-            // Fetch the latest version from Modrinth
-            URL apiUrl = new URL("https://api.modrinth.com/v2/project/complementary-reimagined/version");
-            HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
+            String encodedQuery = URLEncoder.encode(query, "UTF-8");
+            String encodedFacets = URLEncoder.encode("[[\"project_type:shader\"]]", "UTF-8");
+            URL searchUrl = new URL("https://api.modrinth.com/v2/search?query=" + encodedQuery + "&facets=" + encodedFacets + "&limit=1");
+            
+            HttpURLConnection conn = (HttpURLConnection) searchUrl.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "IrisShadersDownloadMod/1.0");
             
-            InputStream is = conn.getInputStream();
-            String response = new String(is.readAllBytes());
-            is.close();
+            InputStreamReader reader = new InputStreamReader(conn.getInputStream());
+            JsonObject response = JsonParser.parseReader(reader).getAsJsonObject();
+            reader.close();
             
-            // Hacky JSON parsing to find the first download URL
-            String urlPrefix = "\"url\":\"";
-            int urlStart = response.indexOf(urlPrefix);
-            if (urlStart != -1) {
-                int urlEnd = response.indexOf("\"", urlStart + urlPrefix.length());
-                String downloadUrl = response.substring(urlStart + urlPrefix.length(), urlEnd);
-                
-                LOGGER.info("Found URL: " + downloadUrl);
-                
-                HttpURLConnection downloadConn = (HttpURLConnection) new URL(downloadUrl).openConnection();
-                downloadConn.setRequestProperty("User-Agent", "IrisShadersDownloadMod/1.0");
-                InputStream downloadIs = downloadConn.getInputStream();
-                Files.copy(downloadIs, targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                downloadIs.close();
-                LOGGER.info("Successfully downloaded shader pack!");
+            JsonArray hits = response.getAsJsonArray("hits");
+            if (hits.size() == 0) {
+                source.sendFeedback(Text.literal("§c[IrisDownloader] No shaders found matching: " + query));
+                return;
             }
+            
+            JsonObject firstHit = hits.get(0).getAsJsonObject();
+            String slug = firstHit.get("slug").getAsString();
+            String title = firstHit.get("title").getAsString();
+            
+            source.sendFeedback(Text.literal("§a[IrisDownloader] Found: " + title + " (" + slug + "). Downloading..."));
+            
+            downloadProjectBySlug(slug, source);
+            
         } catch (Exception e) {
-            LOGGER.error("Failed to download shader pack", e);
+            LOGGER.error("Failed to search Modrinth", e);
+            if (source != null) {
+                source.sendFeedback(Text.literal("§c[IrisDownloader] Error occurred while searching. See log."));
+            }
         }
     }
     
-    private void enableIris(File gameDir) {
+    private void downloadProjectBySlug(String slug, FabricClientCommandSource source) throws Exception {
+        URL apiUrl = new URL("https://api.modrinth.com/v2/project/" + slug + "/version");
+        HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("User-Agent", "IrisShadersDownloadMod/1.0");
+        
+        InputStreamReader reader = new InputStreamReader(conn.getInputStream());
+        JsonArray versions = JsonParser.parseReader(reader).getAsJsonArray();
+        reader.close();
+        
+        if (versions.size() == 0) {
+            if (source != null) source.sendFeedback(Text.literal("§c[IrisDownloader] No files available for this shader."));
+            return;
+        }
+        
+        JsonObject latestVersion = versions.get(0).getAsJsonObject();
+        JsonArray files = latestVersion.getAsJsonArray("files");
+        if (files.size() == 0) return;
+        
+        JsonObject primaryFile = files.get(0).getAsJsonObject();
+        for (JsonElement fileElem : files) {
+            JsonObject f = fileElem.getAsJsonObject();
+            if (f.has("primary") && f.get("primary").getAsBoolean()) {
+                primaryFile = f;
+                break;
+            }
+        }
+        
+        String downloadUrl = primaryFile.get("url").getAsString();
+        String filename = primaryFile.get("filename").getAsString();
+        
+        Path gameDir = FabricLoader.getInstance().getGameDir();
+        File shaderpacksDir = new File(gameDir.toFile(), "shaderpacks");
+        if (!shaderpacksDir.exists()) shaderpacksDir.mkdirs();
+        
+        File targetFile = new File(shaderpacksDir, filename);
+        
+        HttpURLConnection downloadConn = (HttpURLConnection) new URL(downloadUrl).openConnection();
+        downloadConn.setRequestProperty("User-Agent", "IrisShadersDownloadMod/1.0");
+        InputStream downloadIs = downloadConn.getInputStream();
+        Files.copy(downloadIs, targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        downloadIs.close();
+        
+        if (source != null) {
+            source.sendFeedback(Text.literal("§a[IrisDownloader] Downloaded " + filename + " successfully!"));
+            source.sendFeedback(Text.literal("§e[IrisDownloader] Applying shader to config..."));
+        }
+        LOGGER.info("Successfully downloaded shader pack: " + filename);
+        
+        enableIris(gameDir.toFile(), filename);
+        
+        if (source != null) {
+            source.sendFeedback(Text.literal("§a[IrisDownloader] Shader applied! Press F3+R or open Video Settings to see changes."));
+        }
+    }
+    
+    private void enableIris(File gameDir, String packName) {
         try {
             File irisProps = new File(gameDir, "config/iris.properties");
             if (!irisProps.getParentFile().exists()) {
@@ -90,14 +178,14 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
                 props.setProperty("enableShaders", "true");
                 changed = true;
             }
-            if (!"ComplementaryReimagined.zip".equals(props.getProperty("shaderPack"))) {
-                props.setProperty("shaderPack", "ComplementaryReimagined.zip");
+            if (!packName.equals(props.getProperty("shaderPack"))) {
+                props.setProperty("shaderPack", packName);
                 changed = true;
             }
             
             if (changed) {
                 props.store(new FileOutputStream(irisProps), "Modified by IrisShadersDownload");
-                LOGGER.info("Enabled shaders in iris.properties");
+                LOGGER.info("Enabled shader " + packName + " in iris.properties");
             }
         } catch (Exception e) {
             LOGGER.error("Failed to update iris.properties", e);
