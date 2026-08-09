@@ -18,7 +18,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		"modid" {
+		"iris_shaders_download" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}

@@ -6,7 +6,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.google.gson.JsonArray;
@@ -40,7 +40,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
                 .then(ClientCommandManager.argument("name", StringArgumentType.greedyString())
                     .executes(context -> {
                         String shaderName = StringArgumentType.getString(context, "name");
-                        context.getSource().sendFeedback(Text.literal("§e[IrisDownloader] Searching Modrinth for: " + shaderName));
+                        context.getSource().sendFeedback(Component.literal("§e[IrisDownloader] Searching Modrinth for: " + shaderName));
                         
                         new Thread(() -> {
                             searchAndDownloadShader(shaderName, context.getSource());
@@ -85,7 +85,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
             
             JsonArray hits = response.getAsJsonArray("hits");
             if (hits.size() == 0) {
-                source.sendFeedback(Text.literal("§c[IrisDownloader] No shaders found matching: " + query));
+                source.sendFeedback(Component.literal("§c[IrisDownloader] No shaders found matching: " + query));
                 return;
             }
             
@@ -93,14 +93,14 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
             String slug = firstHit.get("slug").getAsString();
             String title = firstHit.get("title").getAsString();
             
-            source.sendFeedback(Text.literal("§a[IrisDownloader] Found: " + title + " (" + slug + "). Downloading..."));
+            source.sendFeedback(Component.literal("§a[IrisDownloader] Found: " + title + " (" + slug + "). Downloading..."));
             
             downloadProjectBySlug(slug, source);
             
         } catch (Exception e) {
             LOGGER.error("Failed to search Modrinth", e);
             if (source != null) {
-                source.sendFeedback(Text.literal("§c[IrisDownloader] Error occurred while searching. See log."));
+                source.sendFeedback(Component.literal("§c[IrisDownloader] Error occurred while searching. See log."));
             }
         }
     }
@@ -116,7 +116,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         reader.close();
         
         if (versions.size() == 0) {
-            if (source != null) source.sendFeedback(Text.literal("§c[IrisDownloader] No files available for this shader."));
+            if (source != null) source.sendFeedback(Component.literal("§c[IrisDownloader] No files available for this shader."));
             return;
         }
         
@@ -149,15 +149,15 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         downloadIs.close();
         
         if (source != null) {
-            source.sendFeedback(Text.literal("§a[IrisDownloader] Downloaded " + filename + " successfully!"));
-            source.sendFeedback(Text.literal("§e[IrisDownloader] Applying shader to config..."));
+            source.sendFeedback(Component.literal("§a[IrisDownloader] Downloaded " + filename + " successfully!"));
+            source.sendFeedback(Component.literal("§e[IrisDownloader] Applying shader to config..."));
         }
         LOGGER.info("Successfully downloaded shader pack: " + filename);
         
         enableIris(gameDir.toFile(), filename);
         
         if (source != null) {
-            source.sendFeedback(Text.literal("§a[IrisDownloader] Shader applied! Press F3+R or open Video Settings to see changes."));
+            source.sendFeedback(Component.literal("§a[IrisDownloader] Shader applied! Press F3+R or open Video Settings to see changes."));
         }
     }
     
