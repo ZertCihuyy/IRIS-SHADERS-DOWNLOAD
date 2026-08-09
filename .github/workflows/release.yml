@@ -24,12 +24,12 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew build
-
       - name: Extract Version
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build with Gradle
+        run: ./gradlew build -Pmod_version=${{ steps.get_version.outputs.VERSION }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -37,6 +37,7 @@ jobs:
           name: Release ${{ steps.get_version.outputs.VERSION }}
           draft: false
           prerelease: false
-          files: build/libs/*.jar
+          files: |
+            build/libs/iris-shaders-download-${{ steps.get_version.outputs.VERSION }}.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
