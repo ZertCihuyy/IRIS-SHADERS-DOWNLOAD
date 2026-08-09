@@ -26,6 +26,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Properties;
 import java.io.FileInputStream;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.Screens;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.Minecraft;
 
 public class IrisShadersDownloadClient implements ClientModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger("iris-shaders-download");
@@ -50,6 +55,15 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
                     })));
         });
         
+        // Add a button to the Iris Shaders Menu
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (screen.getClass().getSimpleName().equals("ShaderPackScreen")) {
+                Screens.getButtons(screen).add(Button.builder(Component.literal("🔍 Search Modrinth"), button -> {
+                    client.setScreen(new ChatScreen("/downloadshader "));
+                }).bounds(10, 10, 120, 20).build());
+            }
+        });
+        
         // Default behavior (download Complementary if no shaders exist)
         Path gameDir = FabricLoader.getInstance().getGameDir();
         File shaderpacksDir = new File(gameDir.toFile(), "shaderpacks");
@@ -58,7 +72,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         }
         
         File targetShader = new File(shaderpacksDir, "ComplementaryReimagined.zip");
-        if (!targetShader.exists() && shaderpacksDir.listFiles() != null && shaderpacksDir.listFiles().length == 0) {
+        if (!targetShader.exists()) {
             new Thread(() -> {
                 try {
                     downloadProjectBySlug("complementary-reimagined", null);

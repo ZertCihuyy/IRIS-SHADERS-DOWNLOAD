@@ -7,7 +7,10 @@
 	"authors": [
 		"Auto-Gen"
 	],
-	"contact": {},
+	"contact": {
+		"homepage": "https://github.com/ZertCihuyy/IRIS-SHADERS-DOWNLOAD",
+		"sources": "https://github.com/ZertCihuyy/IRIS-SHADERS-DOWNLOAD"
+	},
 	"license": "GPL-3.0-or-later",
 	"icon": "assets/iris_shaders_download/icon.png",
 	"environment": "*",
