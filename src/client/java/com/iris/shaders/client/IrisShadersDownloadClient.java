@@ -4,7 +4,6 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
@@ -13,6 +12,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.minecraft.client.Minecraft;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -28,9 +28,7 @@ import java.util.Properties;
 import java.io.FileInputStream;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
-import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.Minecraft;
 
 public class IrisShadersDownloadClient implements ClientModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger("iris-shaders-download");
@@ -45,10 +43,10 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
                 .then(ClientCommandManager.argument("name", StringArgumentType.greedyString())
                     .executes(context -> {
                         String shaderName = StringArgumentType.getString(context, "name");
-                        context.getSource().sendFeedback(Component.literal("§e[IrisDownloader] Searching Modrinth for: " + shaderName));
+                        sendMessage("§e[IrisDownloader] Searching Modrinth for: " + shaderName);
                         
                         new Thread(() -> {
-                            searchAndDownloadShader(shaderName, context.getSource());
+                            searchAndDownloadShader(shaderName);
                         }).start();
                         
                         return 1;
@@ -59,7 +57,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen.getClass().getSimpleName().equals("ShaderPackScreen")) {
                 Screens.getButtons(screen).add(Button.builder(Component.literal("Search Modrinth"), button -> {
-                    client.setScreen(new ChatScreen("/downloadshader "));
+                    client.setScreen(new ModrinthDownloadScreen(screen));
                 }).bounds(10, 10, 120, 20).build());
             }
         });
@@ -75,7 +73,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         if (!targetShader.exists()) {
             new Thread(() -> {
                 try {
-                    downloadProjectBySlug("complementary-reimagined", null);
+                    downloadProjectBySlug("complementary-reimagined");
                 } catch (Exception e) {
                     LOGGER.error("Failed to download default shader", e);
                 }
@@ -83,7 +81,14 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         }
     }
     
-    private void searchAndDownloadShader(String query, FabricClientCommandSource source) {
+    public static void sendMessage(String text) {
+        if (Minecraft.getInstance().player != null) {
+            Minecraft.getInstance().player.displayClientMessage(Component.literal(text), false);
+        }
+        LOGGER.info(text);
+    }
+    
+    public static void searchAndDownloadShader(String query) {
         try {
             String encodedQuery = URLEncoder.encode(query, "UTF-8");
             String encodedFacets = URLEncoder.encode("[[\"project_type:shader\"]]", "UTF-8");
@@ -99,7 +104,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
             
             JsonArray hits = response.getAsJsonArray("hits");
             if (hits.size() == 0) {
-                source.sendFeedback(Component.literal("§c[IrisDownloader] No shaders found matching: " + query));
+                sendMessage("§c[IrisDownloader] No shaders found matching: " + query);
                 return;
             }
             
@@ -107,19 +112,17 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
             String slug = firstHit.get("slug").getAsString();
             String title = firstHit.get("title").getAsString();
             
-            source.sendFeedback(Component.literal("§a[IrisDownloader] Found: " + title + " (" + slug + "). Downloading..."));
+            sendMessage("§a[IrisDownloader] Found: " + title + " (" + slug + "). Downloading...");
             
-            downloadProjectBySlug(slug, source);
+            downloadProjectBySlug(slug);
             
         } catch (Exception e) {
             LOGGER.error("Failed to search Modrinth", e);
-            if (source != null) {
-                source.sendFeedback(Component.literal("§c[IrisDownloader] Error occurred while searching. See log."));
-            }
+            sendMessage("§c[IrisDownloader] Error occurred while searching. See log.");
         }
     }
     
-    private void downloadProjectBySlug(String slug, FabricClientCommandSource source) throws Exception {
+    private static void downloadProjectBySlug(String slug) throws Exception {
         URL apiUrl = new URL("https://api.modrinth.com/v2/project/" + slug + "/version");
         HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
         conn.setRequestMethod("GET");
@@ -130,7 +133,7 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         reader.close();
         
         if (versions.size() == 0) {
-            if (source != null) source.sendFeedback(Component.literal("§c[IrisDownloader] No files available for this shader."));
+            sendMessage("§c[IrisDownloader] No files available for this shader.");
             return;
         }
         
@@ -162,20 +165,16 @@ public class IrisShadersDownloadClient implements ClientModInitializer {
         Files.copy(downloadIs, targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
         downloadIs.close();
         
-        if (source != null) {
-            source.sendFeedback(Component.literal("§a[IrisDownloader] Downloaded " + filename + " successfully!"));
-            source.sendFeedback(Component.literal("§e[IrisDownloader] Applying shader to config..."));
-        }
+        sendMessage("§a[IrisDownloader] Downloaded " + filename + " successfully!");
+        sendMessage("§e[IrisDownloader] Applying shader to config...");
         LOGGER.info("Successfully downloaded shader pack: " + filename);
         
         enableIris(gameDir.toFile(), filename);
         
-        if (source != null) {
-            source.sendFeedback(Component.literal("§a[IrisDownloader] Shader applied! Press F3+R or open Video Settings to see changes."));
-        }
+        sendMessage("§a[IrisDownloader] Shader applied! Press F3+R or open Video Settings to see changes.");
     }
     
-    private void enableIris(File gameDir, String packName) {
+    private static void enableIris(File gameDir, String packName) {
         try {
             File irisProps = new File(gameDir, "config/iris.properties");
             if (!irisProps.getParentFile().exists()) {
